@@ -1,0 +1,8 @@
+.env
+memory/Amritesh3R@gmail.com_chat_history.json
+data/users.json
+config/client_secret.json
+config/*.json
+*.pyc
+__pycache__/
+.env

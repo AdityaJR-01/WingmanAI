@@ -1,0 +1,6 @@
+{
+    "gmail": "https://mail.google.com/",
+    "calendar": "https://www.googleapis.com/auth/calendar",
+    "docs": "https://www.googleapis.com/auth/documents",
+    "drive": "https://www.googleapis.com/auth/drive"
+}

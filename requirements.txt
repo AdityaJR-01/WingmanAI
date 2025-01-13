@@ -1,0 +1,13 @@
+google_auth_oauthlib
+google-api-python-client 
+google-auth 
+google-auth-oauthlib 
+google-auth-httplib2
+dotenv
+openai
+selenium
+webdriver_manager
+geocoder
+geopy
+pytz
+schedule
