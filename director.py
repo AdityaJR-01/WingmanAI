@@ -109,157 +109,96 @@ class Director:
     def _generate_dynamic_system_prompt(self):
         """Generates the system prompt using only the agents available to the user."""
         
-        # Start with the static instructions
-        prompt = """You are WingMan's Director — an intelligent coordinator and assistant. You analyze user input and route it to the correct specialized agent.
+        prompt = """You are WingMan's Director — an intelligent coordinator and assistant. You analyze user input and break it down into actionable, sequential tasks.
 
-🧠 ALWAYS return a valid JSON **single dictionary** in the following format:
-{
-    "agent": "name_of_agent",
-    "query": "user's query meant for that agent"
-}
+🧠 ALWAYS return a valid JSON **array of dictionaries** in the following format:
+[
+    {
+        "agent": "name_of_agent",
+        "query": "user's query meant for that agent"
+    }
+]
 
-Only include `agent` and `query` keys. DO NOT include actions, parameters, or any other fields.
+Only include `agent` and `query` keys. DO NOT include actions, parameters, or any other fields. If there is only one task, still return it inside an array.
 
 ---
 
 🟡 Use these agents:
 
 """
-        # Dictionary mapping agent names to descriptions (needs to be defined centrally or loaded)
+        # Dictionary mapping agent names to descriptions 
         AGENT_DESCRIPTIONS = {
-            "email": """
-📧 **Email Agent** – for anything related to email:
-{
-    "agent": "email",
-    "query": "user's email request like 'send an email to Alex' or 'check unread emails'"
-}
-
+            "email": """📧 **Email Agent** – for anything related to email:
+{ "agent": "email", "query": "user's email request like 'send an email to Alex' or 'check unread emails'" }
 Examples:
 - "Send an email to Riya about the presentation"
 - "Show me emails from Google"
-- "Reply to John's message with a thank you"
 """,
             "calendar": """📅 **Calendar Agent** – for scheduling, editing, or checking events:
-{
-    "agent": "calendar",
-    "query": "calendar-related request like 'schedule a call at 3PM', 'delete my event tomorrow'"
-}
-
+{ "agent": "calendar", "query": "calendar-related request like 'schedule a call at 3PM', 'delete my event tomorrow'" }
 Examples:
 - "Add a meeting with Dev at 10AM"
 - "Show my events for next week"
 """,
             "doc": """📄 **Doc Agent** – for working with documents or notes:
-{
-    "agent": "doc",
-    "query": "document or note related request like 'summarize this', 'search notes on finance'"
-}
-
+{ "agent": "doc", "query": "document or note related request like 'summarize this', 'search notes on finance'" }
 Examples:
 - "Summarize the report I uploaded"
 - "Find my notes on statistics"
 """,
             "weather": """⛅ **Weather Agent** – for anything about the weather:
-{
-    "agent": "weather",
-    "query": "weather-related request with location if mentioned"
-}
-
+{ "agent": "weather", "query": "weather-related request with location if mentioned" }
 Examples:
 - "What's the weather like in Mumbai?"
 - "Will it rain this weekend?"
 """,
             "websearch": """🔍 **Web Search Agent** – for looking up anything online:
-{
-    "agent": "web",
-    "query": "search query or knowledge-based question"
-}
-
+{ "agent": "web", "query": "search query or knowledge-based question" }
 Examples:
 - "What is generative AI?"
 - "Latest news about cricket"
-- "How does a black hole form?"
 """,
             "research": """📚 **Research Agent** – for help with academic references, research material, or study topics:
-{
-    "agent": "research",
-    "query": "request for academic help like 'give me 10 papers on machine learning' or 'list resources on quantum computing'"
-}
-
+{ "agent": "research", "query": "request for academic help like 'give me 10 papers on machine learning'" }
 Examples:
 - "Give me 10 research papers on blockchain"
-- "List references on fuzzy logic and its applications"
-- "Find textbooks on data structures with summaries and links"
 """,
             "linkedin": """💼 **LinkedIn Agent** – for interacting with LinkedIn:
-{
-    "agent": "linkedin",
-    "query": "LinkedIn-related actions like 'send a connection request', 'search for jobs', or 'message a recruiter', or 'schedule a post'"
-}
-
+{ "agent": "linkedin", "query": "LinkedIn-related actions like 'send a connection request', 'search for jobs'" }
 Examples:
 - "Connect with the hiring manager at Google"
-- "Send a thank you message to Sarah on LinkedIn"
-- "Search for internships in data science"
 """,
             "spotify": """🎵 **Spotify Agent** – for playing or managing music on Spotify:
-{
-    "agent": "spotify",
-    "query": "Spotify music-related requests like 'play a song', 'add to playlist', or 'recommend music'"
-}
-
-Examples:
-- "Play some Lo-fi beats"
-- "Add this song to my workout playlist"
-- "Recommend me some chill jazz"
+{ "agent": "spotify", "query": "Spotify music-related requests like 'play a song', 'add to playlist'" }
 """,
             "youtube": """📺 **YouTube Agent** – for searching and interacting with YouTube:
-{
-    "agent": "youtube",
-    "query": "YouTube-related requests like 'search for a video', 'play something', or 'get video links'"
-}
-
-Examples:
-- "Search YouTube for tutorials on ReactJS"
-- "Play lo-fi music from YouTube"
-- "Find the latest video by MKBHD"
-""",    # Add descriptions for all potential agents here...
+{ "agent": "youtube", "query": "YouTube-related requests like 'search for a video', 'play something'" }
+"""
         }
 
         # Dynamically append available agents and their descriptions
         for agent_name in self.agents.keys():
             if agent_name in AGENT_DESCRIPTIONS:
-                # This needs to be expanded to include the JSON format and examples
-                # For brevity, we'll just add the header. You will need to fill out the full block.
                 prompt += f"{AGENT_DESCRIPTIONS[agent_name]}\n" 
 
         # Always include the fallback self agent
         prompt += """💬 **Self (General Conversation)** – for normal questions, jokes, or discussion:
-{
-    "agent": "self",
-    "query": "the user query as-is"
-}
-
-Examples:
-- "What's your favorite movie?"
-- "Tell me a joke"
+{ "agent": "self", "query": "the user query as-is" }
 
 ---
 
 🧠 Additional rules:
-- Assume that the user provides only one request per message.
-- If the query contains multiple requests, return only the **first** or **most important** one.
-- Return only a single JSON dictionary, nothing else.
-- Be clear and concise in assigning agent responsibility.
+- Break complex requests into logical, sequential steps.
+- Return only a single JSON array, nothing else.
 - DO NOT add any explanation, metadata, or extra content.
 
 ✅ Examples of valid output:
+[ { "agent": "calendar", "query": "schedule a team sync at 4 PM today" } ]
 
-{ "agent": "calendar", "query": "schedule a team sync at 4 PM today" }
-
-{ "agent": "web", "query": "What is CRISPR gene editing?" }
-
-{ "agent": "self", "query": "Do you have a favorite book?" }
+[ 
+  { "agent": "web", "query": "Find the current stock price of Apple" },
+  { "agent": "email", "query": "Email the Apple stock price to John" }
+]
 """
         return prompt
 
@@ -268,21 +207,11 @@ Examples:
     def get_agent_status(self):
         """Returns a dictionary of all potential agents and their current availability."""
         status = {}
-        user_scopes = set(self.credentials.scopes) if self.credentials else set()
-        
-        # We need a comprehensive list of all potential agents and their display names
-        # Assuming AGENT_SCOPE_MAP contains ALL agents you ever plan to build
         all_potential_agents = {
-            "Email": "Email",         # Must match AGENT_DESCRIPTIONS key
-            "Calendar": "Calendar", 
-            "Doc": "Doc",
-            "research": "Research", 
-            "weather": "Weather",
-            "websearch": "Web Search", # Need to check the routing key for this one
-            "linkedin": "LinkedIn", # Assuming you'll use "linkedin" as the key
-            "spotify": "Spotify",
-            "youtube": "YouTube",
-            # Ensure this list is comprehensive!
+            "Email": "Email", "Calendar": "Calendar", "Doc": "Doc",
+            "research": "Research", "weather": "Weather",
+            "websearch": "Web Search", "linkedin": "LinkedIn",
+            "spotify": "Spotify", "youtube": "YouTube"
         }
 
         for agent_name, display_name in all_potential_agents.items():
@@ -309,30 +238,16 @@ Examples:
     # -------------------- Query Analysis --------------------
 
     def analyze_query(self, user_query):
-        """Ask GPT to decide which agent should handle this query, using conversation history for context."""
+        """Ask GPT to break the query into an array of tasks."""
         
         # 1. Start with the System Prompt
-        messages = [
-            {"role": "system", "content": self.system_prompt}
-        ]
+        messages = [{"role": "system", "content": self.system_prompt}]
         
         # 2. Add Conversation History (Context)
-        # We limit the history sent to the LLM to prevent prompt bloat and manage cost.
-        # Let's take the last 5 relevant turns (excluding the current user query, which is added last).
-        # We assume the history added via add_to_history is already in the OpenAI format: 
-        # {"role": "user"/"assistant", "content": "..."}
-        
-        # --- Context Filtering Logic ---
-        # The history passed from main.py is added to self.conversation_history before this call.
-        # We skip the *last* item added, which is the current user query, as it's added separately below.
-        
         contextual_history = self.conversation_history[:-1] # Exclude the current user query
-        
-        # Add a maximum of the last 5 turns of conversation for context (adjust limit as needed)
         context_limit = 5 
         
         for message in contextual_history[-context_limit:]:
-            # Clean up the message structure for the LLM call:
             messages.append({
                 "role": message["role"],
                 "content": message["content"]
@@ -343,7 +258,7 @@ Examples:
         
         # --- LLM Call ---
         try:
-            logging.debug(f"Sending messages for analysis: {messages}") # Use logging.debug to see the full prompt structure
+            logging.debug(f"Sending messages for analysis: {messages}") 
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
@@ -351,17 +266,22 @@ Examples:
             ).choices[0].message.content.strip()
 
             cleaned = self._clean_json_response(response)
-            result = json.loads(cleaned)
+            tasks = json.loads(cleaned)
 
-            if "agent" not in result or "query" not in result:
-                raise ValueError("Invalid structure returned.")
+            # Ensure it is a list, even if it's just one task
+            if not isinstance(tasks, list):
+                if isinstance(tasks, dict):
+                    tasks = [tasks]
+                else:
+                    raise ValueError("Invalid structure returned: Expected array.")
 
-            logging.info(f"Director routed query to: {result['agent']}")
-            return result
+            logging.info(f"Director routed query into {len(tasks)} tasks.")
+            return tasks
 
         except Exception as e:
             logging.error(f"Error analyzing query: {e}")
-            return {"agent": "self", "query": user_query}
+            # Fallback to general chat
+            return [{"agent": "self", "query": user_query}]
 
     # -------------------- Agent Handling --------------------
 
@@ -369,18 +289,14 @@ Examples:
         """Routes the query to the correct agent."""
         agent = self.agents.get(agent_name)
         
-        # 1. Check if the agent is initialized (should be true due to dynamic prompt)
         if not agent:
             logging.warning(f"No initialized agent found for '{agent_name}'.")
-            
-            # 2. Check if the agent is defined in the full scope map (i.e., it exists but is disabled)
             if agent_name in self.AGENT_SCOPE_MAP:
                 return f"Sorry, you haven't enabled the **{agent_name.capitalize()} Agent** yet. To use this service, please run `login.py` again and grant access to the required scope."
             else:
                 return f"Sorry, I don’t have an agent named '{agent_name}'."
         
         try:
-            # ... (Rest of the call_agent function remains the same)
             response = agent.handle_query(query)
             self.last_used_agent = agent_name
             return response
@@ -397,26 +313,43 @@ Examples:
     # -------------------- Director Main Handler --------------------
 
     def handle_query(self, user_query):
-        """Primary interface for main.py"""
+        """Primary interface for main.py. Executes tasks sequentially."""
         logging.info("Director received a new query.")
         self.add_to_history("user", user_query)
 
-        analysis = self.analyze_query(user_query)
-        agent_name = analysis.get("agent", "self")
-        query = analysis.get("query", user_query)
+        tasks = self.analyze_query(user_query)
+        execution_results = []
 
-        if agent_name == "self":
-            # Fallback GPT chat
-            messages = [{"role": "user", "content": user_query}]
-            reply = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-                temperature=0.7
-            ).choices[0].message.content.strip()
-            self.add_to_history("assistant", reply)
-            return self.structure_response(reply)
+        # Sequential Execution Loop
+        for index, task in enumerate(tasks):
+            agent_name = task.get("agent", "self")
+            query = task.get("query", user_query)
+            
+            logging.info(f"Executing step {index + 1}/{len(tasks)} -> Agent: {agent_name}")
 
-        # If specialized agent
-        response = self.call_agent(agent_name, query)
-        self.add_to_history("agent", response)
-        return self.structure_response(response)
+            if agent_name == "self":
+                # Pass context of previous steps to the general LLM so it knows what just happened
+                context_str = "\n".join(execution_results) if execution_results else "No previous steps."
+                prompt = f"Context from previous steps:\n{context_str}\n\nUser request: {query}"
+                
+                messages = [{"role": "user", "content": prompt}]
+                reply = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages,
+                    temperature=0.7
+                ).choices[0].message.content.strip()
+                
+                response = self.structure_response(reply)
+            else:
+                # Call specialized agent
+                response = self.call_agent(agent_name, query)
+                response = self.structure_response(response)
+
+            # Append the result to feed into the next loop iteration and final summary
+            execution_results.append(f"[{agent_name.capitalize()} Agent]: {response}")
+
+        # Combine all outputs into one clean response for the user interface
+        final_summary = "\n\n".join(execution_results)
+        self.add_to_history("assistant", final_summary)
+        
+        return final_summary
