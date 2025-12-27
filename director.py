@@ -40,6 +40,9 @@ class Director:
         self.agents = {}
         self.conversation_history = []
         self.last_used_agent = None
+        # Full ordered list of agents used for the most recent multi-task query,
+        # so callers (e.g. main.py) aren't limited to just the last one.
+        self.last_used_agents = []
         self.google_credentials = None
         self.linkedin_tokens = None
 
@@ -50,7 +53,7 @@ class Director:
         except ValueError:
             self.user_scopes = set()
             logging.info(f"Google services not available for {user_email}.")
-            
+
         try:
             # Try loading LinkedIn tokens (returns dict if available)
             self.linkedin_tokens = load_linkedin_tokens(user_email)
@@ -71,21 +74,19 @@ class Director:
                         self.agents[agent_key] = AgentClass(self.google_credentials)
                         logging.info(f"✅ Initialized {agent_name}Agent (Google).")
                         initialized = True
-                
+
                 # B. LinkedIn Agent check token dict availability
                 elif agent_key == "linkedin":
-                    # FIX: Renamed variable to avoid conflict with agent_name in previous scope
-                    linkedin_key = "linkedin" # Use "linkedin" for lookup in self.agents
+                    linkedin_key = "linkedin"
                     if self.linkedin_tokens:
-                        self.agents[linkedin_key] = AgentClass(self.linkedin_tokens) 
+                        self.agents[linkedin_key] = AgentClass(self.linkedin_tokens)
                         logging.info(f"✅ Initialized LinkedInAgent.")
                         initialized = True
-                
+
                 # C. Final Logging
                 if initialized:
                     pass
                 else:
-                    # If AgentClass was found but not initialized (i.e., missing tokens/scopes)
                     logging.info(f"❌ Skipping {agent_name}Agent: Scope/Token not granted.")
             else:
                 logging.warning(f"Agent class {agent_class_name} not found.")
@@ -108,7 +109,7 @@ class Director:
 
     def _generate_dynamic_system_prompt(self):
         """Generates the system prompt using only the agents available to the user."""
-        
+
         prompt = """You are WingMan's Director — an intelligent coordinator and assistant. You analyze user input and break it down into actionable, sequential tasks.
 
 🧠 ALWAYS return a valid JSON **array of dictionaries** in the following format:
@@ -126,7 +127,6 @@ Only include `agent` and `query` keys. DO NOT include actions, parameters, or an
 🟡 Use these agents:
 
 """
-        # Dictionary mapping agent names to descriptions 
         AGENT_DESCRIPTIONS = {
             "email": """📧 **Email Agent** – for anything related to email:
 { "agent": "email", "query": "user's email request like 'send an email to Alex' or 'check unread emails'" }
@@ -176,12 +176,10 @@ Examples:
 """
         }
 
-        # Dynamically append available agents and their descriptions
         for agent_name in self.agents.keys():
             if agent_name in AGENT_DESCRIPTIONS:
-                prompt += f"{AGENT_DESCRIPTIONS[agent_name]}\n" 
+                prompt += f"{AGENT_DESCRIPTIONS[agent_name]}\n"
 
-        # Always include the fallback self agent
         prompt += """💬 **Self (General Conversation)** – for normal questions, jokes, or discussion:
 { "agent": "self", "query": "the user query as-is" }
 
@@ -195,7 +193,7 @@ Examples:
 ✅ Examples of valid output:
 [ { "agent": "calendar", "query": "schedule a team sync at 4 PM today" } ]
 
-[ 
+[
   { "agent": "web", "query": "Find the current stock price of Apple" },
   { "agent": "email", "query": "Email the Apple stock price to John" }
 ]
@@ -213,11 +211,8 @@ Examples:
             "websearch": "Web Search", "linkedin": "LinkedIn",
             "spotify": "Spotify", "youtube": "YouTube"
         }
-
         for agent_name, display_name in all_potential_agents.items():
-            is_active = agent_name in self.agents
-            status[display_name] = is_active
-            
+            status[display_name] = agent_name in self.agents
         return status
 
     def add_to_history(self, role, content):
@@ -239,26 +234,17 @@ Examples:
 
     def analyze_query(self, user_query):
         """Ask GPT to break the query into an array of tasks."""
-        
-        # 1. Start with the System Prompt
         messages = [{"role": "system", "content": self.system_prompt}]
-        
-        # 2. Add Conversation History (Context)
-        contextual_history = self.conversation_history[:-1] # Exclude the current user query
-        context_limit = 5 
-        
+
+        contextual_history = self.conversation_history[:-1]  # Exclude the current user query
+        context_limit = 5
         for message in contextual_history[-context_limit:]:
-            messages.append({
-                "role": message["role"],
-                "content": message["content"]
-            })
-            
-        # 3. Add the current User Query
+            messages.append({"role": message["role"], "content": message["content"]})
+
         messages.append({"role": "user", "content": user_query})
-        
-        # --- LLM Call ---
+
         try:
-            logging.debug(f"Sending messages for analysis: {messages}") 
+            logging.debug(f"Sending messages for analysis: {messages}")
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
@@ -268,19 +254,22 @@ Examples:
             cleaned = self._clean_json_response(response)
             tasks = json.loads(cleaned)
 
-            # Ensure it is a list, even if it's just one task
+            # Ensure it is a list, even if the model returns a single object
             if not isinstance(tasks, list):
                 if isinstance(tasks, dict):
                     tasks = [tasks]
                 else:
                     raise ValueError("Invalid structure returned: Expected array.")
 
-            logging.info(f"Director routed query into {len(tasks)} tasks.")
+            for task in tasks:
+                if "agent" not in task or "query" not in task:
+                    raise ValueError("Invalid task structure returned.")
+
+            logging.info(f"Director routed query into {len(tasks)} task(s): {[t['agent'] for t in tasks]}")
             return tasks
 
         except Exception as e:
             logging.error(f"Error analyzing query: {e}")
-            # Fallback to general chat
             return [{"agent": "self", "query": user_query}]
 
     # -------------------- Agent Handling --------------------
@@ -288,14 +277,14 @@ Examples:
     def call_agent(self, agent_name, query):
         """Routes the query to the correct agent."""
         agent = self.agents.get(agent_name)
-        
+
         if not agent:
             logging.warning(f"No initialized agent found for '{agent_name}'.")
             if agent_name in self.AGENT_SCOPE_MAP:
                 return f"Sorry, you haven't enabled the **{agent_name.capitalize()} Agent** yet. To use this service, please run `login.py` again and grant access to the required scope."
             else:
-                return f"Sorry, I don’t have an agent named '{agent_name}'."
-        
+                return f"Sorry, I don't have an agent named '{agent_name}'."
+
         try:
             response = agent.handle_query(query)
             self.last_used_agent = agent_name
@@ -313,43 +302,42 @@ Examples:
     # -------------------- Director Main Handler --------------------
 
     def handle_query(self, user_query):
-        """Primary interface for main.py. Executes tasks sequentially."""
+        """Primary interface for main.py. Executes tasks sequentially, feeding each
+        step's output forward as context for the next."""
         logging.info("Director received a new query.")
         self.add_to_history("user", user_query)
 
         tasks = self.analyze_query(user_query)
         execution_results = []
+        self.last_used_agents = []
 
-        # Sequential Execution Loop
         for index, task in enumerate(tasks):
             agent_name = task.get("agent", "self")
             query = task.get("query", user_query)
-            
+
             logging.info(f"Executing step {index + 1}/{len(tasks)} -> Agent: {agent_name}")
 
             if agent_name == "self":
-                # Pass context of previous steps to the general LLM so it knows what just happened
+                # Pass prior steps' results so the model knows what already happened.
                 context_str = "\n".join(execution_results) if execution_results else "No previous steps."
                 prompt = f"Context from previous steps:\n{context_str}\n\nUser request: {query}"
-                
+
                 messages = [{"role": "user", "content": prompt}]
                 reply = self.client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=messages,
                     temperature=0.7
                 ).choices[0].message.content.strip()
-                
+
                 response = self.structure_response(reply)
             else:
-                # Call specialized agent
                 response = self.call_agent(agent_name, query)
                 response = self.structure_response(response)
 
-            # Append the result to feed into the next loop iteration and final summary
+            self.last_used_agents.append(agent_name)
             execution_results.append(f"[{agent_name.capitalize()} Agent]: {response}")
 
-        # Combine all outputs into one clean response for the user interface
         final_summary = "\n\n".join(execution_results)
         self.add_to_history("assistant", final_summary)
-        
+
         return final_summary
