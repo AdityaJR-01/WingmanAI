@@ -1,3 +1,5 @@
+Legacy Project created and shared alongside with @PRIME-07 and @AmriteshHiras
+
 The requirements.txt file contatins all the python libraries required to run this project.
 Use the following command to install all of them:
 
